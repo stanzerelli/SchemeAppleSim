@@ -507,13 +507,13 @@ struct CleanSymbolToolbar: View {
                 // Symbols section
                 ForEach(symbols, id: \.0) { symbol, description in
                     Button(action: {
-                        onInsertText(symbol.0)
+                        onInsertText(symbol)
                     }) {
                         VStack(spacing: 2) {
-                            Text(symbol.0)
+                            Text(symbol)
                                 .font(.title2)
                                 .foregroundColor(.blue)
-                            Text(symbol.1)
+                            Text(description)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
