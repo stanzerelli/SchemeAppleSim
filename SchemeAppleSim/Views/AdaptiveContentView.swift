@@ -136,36 +136,109 @@ struct AdaptiveContentView: View {
     
     private var replOutputView: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Clean header with better styling
             HStack {
-                Text("REPL Output")
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                HStack(spacing: 8) {
+                    Image(systemName: "terminal")
+                        .foregroundColor(.blue)
+                        .font(.headline)
+                    
+                    Text("REPL Output")
+                        .font(PlatformAdaptive.titleFont)
+                        .foregroundColor(.primary)
+                }
+                
                 Spacer()
                 
-                PlatformAdaptive.adaptiveButton(action: clearOutput) {
-                    Image(systemName: "trash")
+                HStack(spacing: 12) {
+                    // Output count badge
+                    if !interpreter.outputHistory.isEmpty {
+                        Text("\(interpreter.outputHistory.count)")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Color.blue)
+                            )
+                    }
+                    
+                    // Clear button with better styling
+                    PlatformAdaptive.adaptiveButton(action: clearOutput) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                            Text("Clear")
+                                .font(.caption)
+                        }
                         .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                    }
+                    .disabled(interpreter.outputHistory.isEmpty)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(PlatformAdaptive.toolbarBackgroundColor)
             
             Divider()
             
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(interpreter.outputHistory.indices, id: \.self) { index in
-                        let entry = interpreter.outputHistory[index]
-                        REPLEntryView(entry: entry)
+            // Enhanced scrollable output
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        if interpreter.outputHistory.isEmpty {
+                            // Empty state
+                            VStack(spacing: 12) {
+                                Image(systemName: "play.circle")
+                                    .font(.system(size: 48))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                                
+                                VStack(spacing: 4) {
+                                    Text("No output yet")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("Run some Scheme code to see results here")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary.opacity(0.8))
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            ForEach(interpreter.outputHistory.indices, id: \.self) { index in
+                                ImprovedREPLEntryView(entry: interpreter.outputHistory[index])
+                                    .id(index)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .background(PlatformAdaptive.backgroundColor)
+                .onChange(of: interpreter.outputHistory.count) { _, _ in
+                    // Auto-scroll to bottom when new output appears
+                    if !interpreter.outputHistory.isEmpty {
+                        withAnimation(PlatformAdaptive.smoothAnimation) {
+                            proxy.scrollTo(interpreter.outputHistory.count - 1, anchor: .bottom)
+                        }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
             }
-            .background(PlatformAdaptive.backgroundColor)
         }
-        .frame(minHeight: 120)
+        .frame(minHeight: 150)
+        .background(
+            RoundedRectangle(cornerRadius: PlatformAdaptive.cornerRadius)
+                .fill(PlatformAdaptive.backgroundColor)
+                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: -2)
+        )
     }
     
     // MARK: - Actions
