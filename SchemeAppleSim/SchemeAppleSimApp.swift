@@ -13,7 +13,12 @@ struct SchemeAppleSimApp: App {
         WindowGroup {
             ContentView()
         }
+        #if os(macOS)
         .windowResizability(.contentSize)
         .defaultSize(width: 1000, height: 700)
+        #endif
+        #if os(iOS)
+        .windowResizability(.automatic)
+        #endif
     }
 }
