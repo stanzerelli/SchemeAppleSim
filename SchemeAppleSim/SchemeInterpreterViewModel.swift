@@ -106,6 +106,7 @@ public class SchemeInterpreterViewModel: ObservableObject {
     }
     
     func saveSession() {
+        #if os(macOS)
         let panel = NSSavePanel()
         panel.title = "Save Scheme Session"
         panel.allowedContentTypes = [.plainText]
@@ -118,6 +119,17 @@ public class SchemeInterpreterViewModel: ObservableObject {
                 }
             }
         }
+        #else
+        // On iOS, save to Documents directory
+        let fileName = "scheme-session-\(Date().timeIntervalSince1970).txt"
+        if let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let fileURL = documentsURL.appendingPathComponent(fileName)
+            Task { @MainActor in
+                await self.saveSessionToFile(fileURL)
+                self.addOutputEntry("", "Session saved to Documents/\(fileName)", false)
+            }
+        }
+        #endif
     }
     
     func handleFileImport(_ result: Result<[URL], Error>) {

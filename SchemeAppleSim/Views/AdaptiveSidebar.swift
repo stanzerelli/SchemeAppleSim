@@ -47,11 +47,11 @@ struct AdaptiveSidebar: View {
                                 onDeleteFile(file)
                             }
                         )
-                        #if os(macOS)
                         .onTapGesture(count: 2) {
-                            renamingFile = file
+                            if PlatformAdaptive.isMacOS {
+                                renamingFile = file
+                            }
                         }
-                        #endif
                     }
                 }
                 .padding(.horizontal, 8)
@@ -107,27 +107,27 @@ struct AdaptiveFileRow: View {
                     
                     Spacer()
                     
-                    #if os(iOS)
-                    // iOS: Show context menu on long press
-                    Menu {
-                        fileContextMenu
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
+                    if !PlatformAdaptive.isMacOS {
+                        // iOS: Show context menu on long press
+                        Menu {
+                            fileContextMenu
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                        .opacity(isSelected ? 1 : 0)
                     }
-                    .opacity(isSelected ? 1 : 0)
-                    #endif
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onSelect()
                 }
-                #if os(macOS)
                 .contextMenu {
-                    fileContextMenu
+                    if PlatformAdaptive.isMacOS {
+                        fileContextMenu
+                    }
                 }
-                #endif
             }
         }
         .padding(.horizontal, 8)

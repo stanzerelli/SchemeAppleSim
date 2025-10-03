@@ -118,11 +118,11 @@ struct EditorTheme: Hashable {
     
     static let defaultLight = EditorTheme(
         name: "Light",
-        background: Color(NSColor.textBackgroundColor),
-        foreground: Color(NSColor.textColor),
-        selectionBackground: Color(NSColor.selectedTextBackgroundColor),
-        lineNumberForeground: Color(NSColor.secondaryLabelColor),
-        currentLineBackground: Color(NSColor.controlBackgroundColor),
+        background: PlatformAdaptive.backgroundColor,
+        foreground: Color.primary,
+        selectionBackground: Color.accentColor.opacity(0.3),
+        lineNumberForeground: Color.secondary,
+        currentLineBackground: PlatformAdaptive.sidebarBackgroundColor,
         commentColor: Color.gray,
         keywordColor: Color.purple,
         stringColor: Color.red,

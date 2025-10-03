@@ -27,12 +27,10 @@ struct AdaptiveContentView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            Group {
-                #if os(macOS)
+            if PlatformAdaptive.isMacOS || shouldUseMacOSLayout(geometry: geometry) {
                 macOSLayout
-                #else
+            } else {
                 iOSLayout(geometry: geometry)
-                #endif
             }
         }
         .onAppear {
@@ -43,7 +41,18 @@ struct AdaptiveContentView: View {
         }
     }
     
-    #if os(macOS)
+    // iPad in landscape should use macOS-style layout
+    private func shouldUseMacOSLayout(geometry: GeometryProxy) -> Bool {
+        if PlatformAdaptive.isMacOS {
+            return true
+        }
+        // iPad in landscape mode should use macOS-style layout
+        if PlatformAdaptive.isiPad && geometry.size.width > geometry.size.height {
+            return true
+        }
+        return false
+    }
+    
     private var macOSLayout: some View {
         PlatformAdaptive.splitView {
             // Sidebar
@@ -62,9 +71,7 @@ struct AdaptiveContentView: View {
             mainEditorArea
         }
     }
-    #endif
     
-    #if os(iOS)
     private func iOSLayout(geometry: GeometryProxy) -> some View {
         NavigationSplitView {
             AdaptiveSidebar(
@@ -77,11 +84,10 @@ struct AdaptiveContentView: View {
                 onDeleteFile: deleteFile
             )
             .navigationTitle("Files")
-            .navigationBarTitleDisplayMode(.inline)
         } detail: {
             if selectedFile != nil {
                 mainEditorArea
-                    .navigationBarHidden(true)
+                    .navigationTitle(selectedFile ?? "Editor")
             } else {
                 VStack {
                     Image(systemName: "doc.text")
@@ -91,11 +97,11 @@ struct AdaptiveContentView: View {
                         .font(.title2)
                         .foregroundColor(.secondary)
                 }
+                .navigationTitle("Editor")
             }
         }
         .navigationSplitViewStyle(.balanced)
     }
-    #endif
     
     private var mainEditorArea: some View {
         VStack(spacing: 0) {
@@ -248,11 +254,6 @@ struct AdaptiveContentView: View {
         selectedFile = file
         currentCode = fileContents[file] ?? ""
         hasUnsavedChanges = false
-        
-        #if os(iOS)
-        // On iOS, hide sidebar after selection
-        showingSidebar = false
-        #endif
     }
     
     private func createNewFile() {
