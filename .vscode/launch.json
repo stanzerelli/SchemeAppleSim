@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SchemeAppleSim}",
+            "name": "Debug scheme-cli",
+            "program": "${workspaceFolder:SchemeAppleSim}/.build/debug/scheme-cli",
+            "preLaunchTask": "swift: Build Debug scheme-cli"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SchemeAppleSim}",
+            "name": "Release scheme-cli",
+            "program": "${workspaceFolder:SchemeAppleSim}/.build/release/scheme-cli",
+            "preLaunchTask": "swift: Build Release scheme-cli"
+        }
+    ]
+}
