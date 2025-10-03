@@ -22,6 +22,7 @@ struct SidebarView: View {
     }
     
     var body: some View {
+        #if os(macOS)
         HSplitView {
             // Sidebar tabs
             VStack(spacing: 0) {
@@ -93,6 +94,79 @@ struct SidebarView: View {
                 .background(editorViewModel.currentTheme.sidebarColor)
             }
         }
+        #else
+        // iOS version using HStack instead of HSplitView
+        HStack(spacing: 0) {
+            // Sidebar tabs
+            VStack(spacing: 0) {
+                ForEach(SidebarTab.allCases, id: \.self) { tab in
+                    Button(action: {
+                        selectedTab = tab
+                    }) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 16))
+                            .foregroundColor(selectedTab == tab ? 
+                                           editorViewModel.currentTheme.accentColor : 
+                                           editorViewModel.currentTheme.secondaryTextColor)
+                            .frame(width: 40, height: 40)
+                            .background(selectedTab == tab ? 
+                                      editorViewModel.currentTheme.selectionColor.opacity(0.3) : 
+                                      Color.clear)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                
+                Spacer()
+            }
+            .frame(width: 40)
+            .background(editorViewModel.currentTheme.sidebarColor)
+            
+            // Content area
+            if isExpanded {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Text(selectedTab.rawValue)
+                            .font(.headline)
+                            .foregroundColor(editorViewModel.currentTheme.textColor)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isExpanded.toggle()
+                            }
+                        }) {
+                            Image(systemName: "sidebar.left")
+                                .font(.system(size: 12))
+                                .foregroundColor(editorViewModel.currentTheme.secondaryTextColor)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(editorViewModel.currentTheme.backgroundColor)
+                    
+                    Divider()
+                        .background(editorViewModel.currentTheme.borderColor)
+                    
+                    // Content
+                    switch selectedTab {
+                    case .files:
+                        FilesTabView(editorViewModel: editorViewModel)
+                    case .search:
+                        SearchTabView(editorViewModel: editorViewModel)
+                    case .extensions:
+                        ExtensionsTabView(editorViewModel: editorViewModel)
+                    case .settings:
+                        SettingsTabView(editorViewModel: editorViewModel)
+                    }
+                }
+                .frame(width: 250)
+                .background(editorViewModel.currentTheme.sidebarColor)
+            }
+        }
+        #endif
     }
 }
 
