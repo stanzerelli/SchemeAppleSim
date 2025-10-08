@@ -194,6 +194,8 @@ public class SchemeREPL {
             return b ? "#t" : "#f"
         case .null:
             return "()"
+        case .unspecified:
+            return "#<unspecified>"
         case .pair(_, _):
             return formatList(expr)
         case .procedure(.primitive(_)):
@@ -210,6 +212,8 @@ public class SchemeREPL {
             } else {
                 return "#<procedure(\(params.joined(separator: " ")))>"
             }
+        case .procedure(.continuation(_)):
+            return "#<continuation>"
         }
     }
     

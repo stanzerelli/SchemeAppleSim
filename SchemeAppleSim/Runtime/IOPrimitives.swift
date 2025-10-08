@@ -178,6 +178,8 @@ struct IOPrimitives {
             return b ? "#t" : "#f"
         case .null:
             return "()"
+        case .unspecified:
+            return "#<unspecified>"
         case .pair(_, _):
             return formatList(expr)
         case .procedure(_):

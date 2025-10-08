@@ -186,6 +186,8 @@ public class SchemeInterpreterViewModel: ObservableObject {
             return b ? "#t" : "#f"
         case .null:
             return "()"
+        case .unspecified:
+            return "#<unspecified>"
         case .pair(_, _):
             return formatList(expr)
         case .procedure(.primitive(_)):
@@ -202,6 +204,8 @@ public class SchemeInterpreterViewModel: ObservableObject {
             } else {
                 return "#<procedure(\(params.joined(separator: " ")))>"
             }
+        case .procedure(.continuation(_)):
+            return "#<continuation>"
         }
     }
     
@@ -245,9 +249,11 @@ public class SchemeInterpreterViewModel: ObservableObject {
         case .symbol(_): return "symbol"
         case .boolean(_): return "boolean"
         case .null: return "null"
+        case .unspecified: return "unspecified"
         case .pair(_, _): return expr.isList ? "list" : "pair"
         case .procedure(.primitive(_)): return "primitive"
         case .procedure(.compound(_, _, _, _)): return "procedure"
+        case .procedure(.continuation(_)): return "continuation"
         }
     }
     
