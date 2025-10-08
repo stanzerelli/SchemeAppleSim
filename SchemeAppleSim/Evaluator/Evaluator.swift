@@ -164,7 +164,7 @@ public class Evaluator {
         return args[0]
     }
     
-    private func evaluateIf(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateIf(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         guard args.count >= 2 && args.count <= 3 else {
             throw SchemeError.incorrectArity(expected: "2 or 3", actual: args.count)
@@ -174,9 +174,9 @@ public class Evaluator {
         let isTruthy = !condition.isFalse
         
         if isTruthy {
-            return try evaluateInEnvironment(args[1], env)
+            return try evaluateInEnvironment(args[1], env, inTailPosition: inTailPosition)
         } else if args.count == 3 {
-            return try evaluateInEnvironment(args[2], env)
+            return try evaluateInEnvironment(args[2], env, inTailPosition: inTailPosition)
         } else {
             return .null // undefined behavior in R5RS, but we return null
         }
@@ -184,20 +184,23 @@ public class Evaluator {
     
     private func evaluateDefine(_ expr: SExpression, _ env: Environment) throws -> SExpression {
         let args = try expr.cdr().toArray()
-        guard args.count == 2 else {
-            throw SchemeError.incorrectArity(expected: 2, actual: args.count)
+        guard args.count >= 2 else {
+            throw SchemeError.incorrectArity(expected: "at least 2", actual: args.count)
         }
         
         let first = args[0]
-        let second = args[1]
+        let rest = Array(args[1...])
         
         if case .symbol(let name) = first {
             // Simple variable definition: (define x value)
-            let value = try evaluateInEnvironment(second, env)
+            guard rest.count == 1 else {
+                throw SchemeError.syntaxError("define: Variable definition must have exactly one value")
+            }
+            let value = try evaluateInEnvironment(rest[0], env)
             env.define(symbol: name, value: value)
             return .symbol(name)
         } else if first.isPair {
-            // Function definition: (define (name args...) body)
+            // Function definition: (define (name args...) body...)
             let nameAndArgs = try first.toArray()
             guard !nameAndArgs.isEmpty else {
                 throw SchemeError.syntaxError("define: Empty function signature")
@@ -210,7 +213,7 @@ public class Evaluator {
             let parameters = Array(nameAndArgs[1...])
             let lambda = SExpression.pair(.symbol("lambda"), 
                                         .pair(SExpression.fromArray(parameters), 
-                                              .pair(second, .null)))
+                                              SExpression.fromArray(rest)))
             let procedure = try evaluateInEnvironment(lambda, env)
             env.define(symbol: name, value: procedure)
             return .symbol(name)
@@ -283,23 +286,117 @@ public class Evaluator {
             }
         }
         
-        return .procedure(.compound(paramNames, body, env, variadic))
+        // Process internal definitions in body according to R5RS
+        let processedBody = try processInternalDefinitions(body)
+        
+        return .procedure(.compound(paramNames, processedBody, env, variadic))
     }
     
-    private func evaluateBegin(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    // MARK: - Internal Definition Processing
+    
+    /// Process internal definitions according to R5RS 5.2.2
+    /// Transforms internal definitions into a letrec form
+    private func processInternalDefinitions(_ body: [SExpression]) throws -> [SExpression] {
+        guard !body.isEmpty else {
+            return body
+        }
+        
+        var definitions: [(String, SExpression)] = []
+        var expressions: [SExpression] = []
+        var inDefinitions = true
+        
+        for expr in body {
+            if inDefinitions && isInternalDefinition(expr) {
+                let (name, value) = try extractDefinition(expr)
+                definitions.append((name, value))
+            } else {
+                inDefinitions = false
+                expressions.append(expr)
+            }
+        }
+        
+        if definitions.isEmpty {
+            // No internal definitions, return body as-is
+            return body
+        }
+        
+        // Create letrec form: (letrec ((name1 value1) (name2 value2) ...) expr1 expr2 ...)
+        let bindings = definitions.map { (name, value) in
+            SExpression.pair(.symbol(name), .pair(value, .null))
+        }
+        let bindingsList = SExpression.fromArray(bindings)
+        
+        // If no expressions follow the definitions, add #<unspecified>
+        let bodyExpressions = expressions.isEmpty ? [.unspecified] : expressions
+        
+        let letrecForm = SExpression.pair(.symbol("letrec"),
+                                        .pair(bindingsList,
+                                              SExpression.fromArray(bodyExpressions)))
+        
+        return [letrecForm]
+    }
+    
+    /// Check if an expression is an internal definition
+    private func isInternalDefinition(_ expr: SExpression) -> Bool {
+        guard expr.isPair else { return false }
+        
+        do {
+            let car = try expr.car()
+            return car == .symbol("define")
+        } catch {
+            return false
+        }
+    }
+    
+    /// Extract name and value from a define expression
+    private func extractDefinition(_ expr: SExpression) throws -> (String, SExpression) {
+        let args = try expr.cdr().toArray()
+        guard args.count >= 2 else {
+            throw SchemeError.syntaxError("define: Invalid syntax")
+        }
+        
+        let first = args[0]
+        let rest = Array(args[1...])
+        
+        if case .symbol(let name) = first {
+            // Simple variable definition: (define x value)
+            guard rest.count == 1 else {
+                throw SchemeError.syntaxError("define: Too many arguments for variable definition")
+            }
+            return (name, rest[0])
+        } else if first.isList {
+            // Function definition: (define (name args...) body...)
+            let nameAndArgs = try first.toArray()
+            guard !nameAndArgs.isEmpty,
+                  case .symbol(let name) = nameAndArgs[0] else {
+                throw SchemeError.syntaxError("define: Function name must be a symbol")
+            }
+            
+            let parameters = Array(nameAndArgs[1...])
+            let lambda = SExpression.pair(.symbol("lambda"),
+                                        .pair(SExpression.fromArray(parameters),
+                                              SExpression.fromArray(rest)))
+            return (name, lambda)
+        } else {
+            throw SchemeError.syntaxError("define: Invalid syntax")
+        }
+    }
+    
+    private func evaluateBegin(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         guard !args.isEmpty else {
             throw SchemeError.incorrectArity(expected: "at least 1", actual: 0)
         }
         
         var result: SExpression = .null
-        for arg in args {
-            result = try evaluateInEnvironment(arg, env)
+        for (index, arg) in args.enumerated() {
+            let isLastExpression = index == args.count - 1
+            result = try evaluateInEnvironment(arg, env, inTailPosition: inTailPosition && isLastExpression)
         }
         return result
     }
     
-    private func evaluateCond(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateCond(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let clauses = try expr.cdr().toArray()
         
         for clause in clauses {
@@ -320,7 +417,7 @@ public class Evaluator {
                     return .null
                 } else {
                     return try evaluateBegin(.pair(.symbol("begin"), 
-                                                 SExpression.fromArray(Array(clauseItems[1...]))), env)
+                                                 SExpression.fromArray(Array(clauseItems[1...]))), env, inTailPosition: inTailPosition)
                 }
             }
             
@@ -331,7 +428,7 @@ public class Evaluator {
                     return testResult
                 } else {
                     return try evaluateBegin(.pair(.symbol("begin"), 
-                                                 SExpression.fromArray(Array(clauseItems[1...]))), env)
+                                                 SExpression.fromArray(Array(clauseItems[1...]))), env, inTailPosition: inTailPosition)
                 }
             }
         }
@@ -339,7 +436,7 @@ public class Evaluator {
         return .null
     }
     
-    private func evaluateCase(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateCase(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         guard args.count >= 1 else {
             throw SchemeError.incorrectArity(expected: "at least 1", actual: args.count)
@@ -364,7 +461,7 @@ public class Evaluator {
             // Handle (else expr...)
             if case .symbol("else") = datums {
                 return try evaluateBegin(.pair(.symbol("begin"), 
-                                             SExpression.fromArray(expressions)), env)
+                                             SExpression.fromArray(expressions)), env, inTailPosition: inTailPosition)
             }
             
             // Check if key matches any datum
@@ -376,7 +473,7 @@ public class Evaluator {
             for datum in datumArray {
                 if ComparisonPrimitives.isEqv(key, datum) {
                     return try evaluateBegin(.pair(.symbol("begin"), 
-                                                 SExpression.fromArray(expressions)), env)
+                                                 SExpression.fromArray(expressions)), env, inTailPosition: inTailPosition)
                 }
             }
         }
@@ -384,7 +481,7 @@ public class Evaluator {
         return .null
     }
     
-    private func evaluateAnd(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateAnd(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         
         if args.isEmpty {
@@ -404,7 +501,7 @@ public class Evaluator {
         return .boolean(true)
     }
     
-    private func evaluateOr(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateOr(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         
         if args.isEmpty {
@@ -421,7 +518,7 @@ public class Evaluator {
         return .boolean(false)
     }
     
-    private func evaluateLet(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateLet(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         guard args.count >= 2 else {
             throw SchemeError.incorrectArity(expected: "at least 2", actual: args.count)
@@ -464,10 +561,10 @@ public class Evaluator {
             newEnv.define(symbol: name, value: value)
         }
         
-        return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv)
+        return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv, inTailPosition: inTailPosition)
     }
     
-    private func evaluateLetStar(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateLetStar(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         guard args.count >= 2 else {
             throw SchemeError.incorrectArity(expected: "at least 2", actual: args.count)
@@ -481,7 +578,7 @@ public class Evaluator {
         }
         
         let bindingArray = try bindings.toArray()
-        var currentEnv = Environment(parent: env)
+        let currentEnv = Environment(parent: env)
         
         // Evaluate and bind each variable sequentially
         for binding in bindingArray {
@@ -502,10 +599,10 @@ public class Evaluator {
             currentEnv.define(symbol: name, value: value)
         }
         
-        return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), currentEnv)
+        return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), currentEnv, inTailPosition: inTailPosition)
     }
     
-    private func evaluateLetRec(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateLetRec(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let args = try expr.cdr().toArray()
         guard args.count >= 2 else {
             throw SchemeError.incorrectArity(expected: "at least 2", actual: args.count)
@@ -550,12 +647,12 @@ public class Evaluator {
             try newEnv.set(symbol: name, value: value)
         }
         
-        return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv)
+        return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv, inTailPosition: inTailPosition)
     }
     
     // MARK: - Function Application
     
-    private func evaluateApplication(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateApplication(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         let items = try expr.toArray()
         guard !items.isEmpty else {
             throw SchemeError.syntaxError("Empty application")
@@ -570,10 +667,10 @@ public class Evaluator {
         
         let args = try operands.map { try evaluateInEnvironment($0, env) }
         
-        return try applyProcedure(proc, args: args)
+        return try applyProcedure(proc, args: args, inTailPosition: inTailPosition, environment: env)
     }
     
-    private func applyProcedure(_ procedure: Procedure, args: [SExpression]) throws -> SExpression {
+    private func applyProcedure(_ procedure: Procedure, args: [SExpression], inTailPosition: Bool = false, environment: Environment) throws -> SExpression {
         switch procedure {
         case .primitive(let fn):
             return try fn(args)
@@ -606,8 +703,19 @@ public class Evaluator {
                 }
             }
             
-            // Evaluate body
-            return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv)
+            // Evaluate body with potential tail call optimization
+            if inTailPosition && tailCallOptimization {
+                // Check if this is a tail recursive call to the same procedure
+                // For now, we'll just evaluate normally but this is where TCO would happen
+                return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv, inTailPosition: true)
+            } else {
+                return try evaluateBegin(.pair(.symbol("begin"), SExpression.fromArray(body)), newEnv, inTailPosition: inTailPosition)
+            }
+            
+        case .continuation(let tailContinuation):
+            // This case handles tail continuations for optimization
+            // It should not normally be invoked directly
+            throw SchemeError.evaluationError("Cannot apply tail continuation directly")
         }
     }
 }
