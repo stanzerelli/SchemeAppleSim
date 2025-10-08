@@ -147,15 +147,24 @@ struct AdaptiveSchemeTextEditor: View {
             }
         }
         
-        let insertText = symbol
-        var newText = text + insertText
-        
-        // Smart bracket pairing
-        if bracketPairingEnabled && symbol == "(" {
-            newText += ")"
+        // Enhanced bracket pairing
+        if bracketPairingEnabled && ["(", ")", "[", "]", "\""].contains(symbol) {
+            let result = SchemeLanguageSupport.processBracketInput(
+                symbol,
+                cursorPosition: text.count,
+                in: text
+            )
+            
+            if result.skipExisting {
+                // Just move cursor forward without adding character
+                return
+            } else {
+                text = result.text
+            }
+        } else {
+            text += symbol
         }
         
-        text = newText
         isEditorFocused = true
     }
     

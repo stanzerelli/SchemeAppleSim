@@ -4,10 +4,12 @@ import Foundation
 public class Environment {
     private var bindings: [String: SExpression] = [:]
     private let parent: Environment?
+    private var level: Int  // Nesting level for debugging
     
     /// Initialize a new environment with optional parent
     public init(parent: Environment? = nil) {
         self.parent = parent
+        self.level = (parent?.level ?? -1) + 1
     }
     
     /// Define a new binding in this environment
@@ -43,6 +45,11 @@ public class Environment {
         return lookup(symbol: symbol) != nil
     }
     
+    /// Check if a symbol is bound locally in this environment only
+    public func containsLocal(symbol: String) -> Bool {
+        return bindings[symbol] != nil
+    }
+    
     /// Get all defined symbols in this environment (not including parents)
     public var localSymbols: Set<String> {
         return Set(bindings.keys)
@@ -70,6 +77,31 @@ public class Environment {
     /// Clear all local bindings
     public func clear() {
         bindings.removeAll()
+    }
+    
+    /// Get the nesting level of this environment
+    public var nestingLevel: Int {
+        return level
+    }
+    
+    /// Get the parent environment
+    public var parentEnvironment: Environment? {
+        return parent
+    }
+    
+    /// Create a new environment for internal definitions
+    /// This is used for supporting R5RS internal definitions
+    public func createInternalDefinitionEnvironment() -> Environment {
+        let env = Environment(parent: self)
+        return env
+    }
+    
+    /// Merge internal definitions into current environment
+    /// Used after processing a block with internal definitions
+    public func mergeInternalDefinitions(from internalEnv: Environment) {
+        for (symbol, value) in internalEnv.bindings {
+            self.bindings[symbol] = value
+        }
     }
 }
 

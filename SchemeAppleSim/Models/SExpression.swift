@@ -9,6 +9,7 @@ public indirect enum SExpression {
     case pair(SExpression, SExpression)  // Cons cell for pairs/lists
     case procedure(Procedure)
     case null  // '()
+    case unspecified  // For expressions that return unspecified values
 }
 
 // MARK: - Basic Operations
@@ -145,6 +146,8 @@ extension SExpression: CustomStringConvertible {
             return "#<procedure>"
         case .null: 
             return "()"
+        case .unspecified:
+            return "#<unspecified>"
         case .pair(let carExpr, let cdrExpr):
             // Handle proper lists vs improper lists
             if isList {
@@ -177,6 +180,8 @@ extension SExpression: Equatable {
             return a == b
         case (.null, .null):
             return true
+        case (.unspecified, .unspecified):
+            return true
         case (.pair(let a1, let b1), .pair(let a2, let b2)):
             return a1 == a2 && b1 == b2
         case (.procedure(_), .procedure(_)):
@@ -205,6 +210,8 @@ extension SExpression: Hashable {
             hasher.combine(s)
         case .null:
             hasher.combine("null")
+        case .unspecified:
+            hasher.combine("unspecified")
         case .pair(let car, let cdr):
             hasher.combine("pair")
             hasher.combine(car)

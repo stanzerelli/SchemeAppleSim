@@ -3,14 +3,20 @@ import Foundation
 // MARK: - Evaluator
 public class Evaluator {
     private var environment: Environment
+    private var tailCallOptimization: Bool
+    private var maxRecursionDepth: Int
+    private var currentRecursionDepth: Int
     
-    public init(environment: Environment? = nil) {
+    public init(environment: Environment? = nil, enableTCO: Bool = true, maxDepth: Int = 1000) {
         self.environment = environment ?? StandardLibrary.createGlobalEnvironment()
+        self.tailCallOptimization = enableTCO
+        self.maxRecursionDepth = maxDepth
+        self.currentRecursionDepth = 0
     }
     
     /// Evaluate a single expression in the current environment
     public func evaluate(_ expression: SExpression) throws -> SExpression {
-        return try evaluateInEnvironment(expression, self.environment)
+        return try evaluateWithTailOptimization(expression, self.environment)
     }
     
     /// Evaluate multiple expressions and return the result of the last one
@@ -36,11 +42,53 @@ public class Evaluator {
         self.environment = env
     }
     
-    // MARK: - Core Evaluation Logic
+    /// Enable or disable tail call optimization
+    public func setTailCallOptimization(_ enabled: Bool) {
+        self.tailCallOptimization = enabled
+    }
     
-    private func evaluateInEnvironment(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    // MARK: - Tail Call Optimization
+    
+    private func evaluateWithTailOptimization(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+        var currentExpression = expr
+        var currentEnvironment = env
+        var tailCallDepth = 0
+        
+        while true {
+            do {
+                let result = try evaluateInEnvironment(currentExpression, currentEnvironment, inTailPosition: true)
+                return result
+            } catch let error as TailCallException {
+                // Handle tail call
+                if !tailCallOptimization {
+                    throw SchemeError.evaluationError("Tail call optimization disabled")
+                }
+                
+                tailCallDepth += 1
+                if tailCallDepth > maxRecursionDepth {
+                    throw SchemeError.evaluationError("Maximum tail call depth exceeded")
+                }
+                
+                let continuation = error.continuation
+                currentExpression = .pair(.procedure(continuation.procedure), 
+                                        SExpression.fromArray(continuation.arguments))
+                currentEnvironment = continuation.environment
+            }
+        }
+    }
+    
+    // MARK: - Core Evaluation Logic with Tail Position Tracking
+    
+    private func evaluateInEnvironment(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
+        currentRecursionDepth += 1
+        defer { currentRecursionDepth -= 1 }
+        
+        if currentRecursionDepth > maxRecursionDepth && !tailCallOptimization {
+            throw SchemeError.evaluationError("Maximum recursion depth exceeded")
+        }
+        
         switch expr {
-        case .number(_), .string(_), .boolean(_), .null:
+        case .number(_), .string(_), .boolean(_), .null, .unspecified:
             // Self-evaluating expressions
             return expr
             
@@ -53,7 +101,7 @@ public class Evaluator {
             
         case .pair(_, _):
             // Function application or special form
-            return try evaluateList(expr, env)
+            return try evaluateList(expr, env, inTailPosition: inTailPosition)
             
         case .procedure(_):
             // Procedures are values
@@ -61,7 +109,7 @@ public class Evaluator {
         }
     }
     
-    private func evaluateList(_ expr: SExpression, _ env: Environment) throws -> SExpression {
+    private func evaluateList(_ expr: SExpression, _ env: Environment, inTailPosition: Bool = false) throws -> SExpression {
         guard expr.isPair else {
             throw SchemeError.evaluationError("Cannot evaluate non-list as application")
         }
@@ -74,7 +122,7 @@ public class Evaluator {
             case "quote":
                 return try evaluateQuote(expr, env)
             case "if":
-                return try evaluateIf(expr, env)
+                return try evaluateIf(expr, env, inTailPosition: inTailPosition)
             case "define":
                 return try evaluateDefine(expr, env)
             case "set!":
@@ -82,28 +130,28 @@ public class Evaluator {
             case "lambda":
                 return try evaluateLambda(expr, env)
             case "begin":
-                return try evaluateBegin(expr, env)
+                return try evaluateBegin(expr, env, inTailPosition: inTailPosition)
             case "cond":
-                return try evaluateCond(expr, env)
+                return try evaluateCond(expr, env, inTailPosition: inTailPosition)
             case "case":
-                return try evaluateCase(expr, env)
+                return try evaluateCase(expr, env, inTailPosition: inTailPosition)
             case "and":
-                return try evaluateAnd(expr, env)
+                return try evaluateAnd(expr, env, inTailPosition: inTailPosition)
             case "or":
-                return try evaluateOr(expr, env)
+                return try evaluateOr(expr, env, inTailPosition: inTailPosition)
             case "let":
-                return try evaluateLet(expr, env)
+                return try evaluateLet(expr, env, inTailPosition: inTailPosition)
             case "let*":
-                return try evaluateLetStar(expr, env)
+                return try evaluateLetStar(expr, env, inTailPosition: inTailPosition)
             case "letrec":
-                return try evaluateLetRec(expr, env)
+                return try evaluateLetRec(expr, env, inTailPosition: inTailPosition)
             default:
                 break
             }
         }
         
         // Regular function application
-        return try evaluateApplication(expr, env)
+        return try evaluateApplication(expr, env, inTailPosition: inTailPosition)
     }
     
     // MARK: - Special Forms
